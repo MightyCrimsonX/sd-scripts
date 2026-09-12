@@ -177,10 +177,10 @@ class NetworkTrainer:
         mean_grad_norm=None,
         mean_combined_norm=None,
         edm2_lr_scheduler=None,
-        current_loss_scaled=None,
-        average_loss_scaled=None,
-        current_loss_edm2=None,
-        average_loss_edm2=None,
+        current_loss_scaled=None, 
+        average_loss_scaled=None, 
+        current_loss_edm2=None, 
+        average_loss_edm2=None, 
         current_val_loss=None,
         average_val_loss=None,
         current_ffl_loss=None,
@@ -190,7 +190,6 @@ class NetworkTrainer:
         current_weight_noise_norm=None,
         current_hf_loss=None,
         current_anchor_loss=None,
-        it_s: float = 0.0,
     ):
         logs = {"loss/current": current_loss, "loss/average": avr_loss}
 
@@ -267,9 +266,6 @@ class NetworkTrainer:
 
         if edm2_lr_scheduler is not None:
             logs[f"lr/edm2"] = edm2_lr_scheduler.get_last_lr()[0]
-
-        if it_s > 0:
-            logs["train/it_s"] = round(it_s, 4)
 
         return logs
 
@@ -3047,7 +3043,6 @@ class NetworkTrainer:
 
         loss_recorder = train_util.EMARecorder()
         val_loss_recorder = train_util.EMARecorder()
-        rate_tracker = train_util.RateTracker()
 
         if args.edm2_loss_weighting:
             loss_scaled_recorder = train_util.EMARecorder()
@@ -3190,7 +3185,6 @@ class NetworkTrainer:
                 current_patch_topology_loss=None,
                 current_hf_loss=None,
                 current_anchor_loss=None,
-                it_s=rate_tracker.it_per_sec,
             )
             if val_logs:
                 logs.update(val_logs)
@@ -3213,8 +3207,7 @@ class NetworkTrainer:
         clean_memory_on_device(accelerator.device)
 
         progress_bar = tqdm(
-            range(args.max_train_steps - global_step), smoothing=0.1, disable=not accelerator.is_local_main_process, desc="steps",
-            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}{postfix}]",
+            range(args.max_train_steps - global_step), smoothing=0, disable=not accelerator.is_local_main_process, desc="steps"
         )
 
         for epoch in range(epoch_to_start, num_train_epochs):
@@ -3469,7 +3462,6 @@ class NetworkTrainer:
 
                 # Checks if the accelerator has performed an optimization step behind the scenes
                 if accelerator.sync_gradients:
-                    rate_tracker.tick()
                     progress_bar.update(1)
                     global_step += 1
 
@@ -3564,8 +3556,8 @@ class NetworkTrainer:
                         loss_edm2_recorder.add(current_global_step_loss_edm2 / accumulation_counter)
                         
                     avr_loss: float = loss_recorder.average
-                    combined = {**max_mean_logs, "avr_loss": f"{avr_loss:.4f}"}
-                    progress_bar.set_postfix_str(f"{rate_tracker.display_rate}, " + ", ".join(f"{k}={v}" for k, v in combined.items()))
+                    logs = {"avr_loss": avr_loss}  # , "lr": lr_scheduler.get_last_lr()[0]}
+                    progress_bar.set_postfix(**{**max_mean_logs, **logs})
 
                     if is_tracking:
                         current_global_step_loss = (current_global_step_loss / accumulation_counter)
@@ -3606,7 +3598,6 @@ class NetworkTrainer:
                             current_weight_noise_norm=(current_global_step_wnoise / accumulation_counter) if self.weight_noise_enabled and current_global_step_wnoise is not None else None,
                             current_hf_loss=(current_global_step_hf / accumulation_counter) if self.hf_scale > 0.0 and current_global_step_hf is not None else None,
                             current_anchor_loss=(current_global_step_anchor / accumulation_counter) if self.anchor_scale > 0.0 and current_global_step_anchor is not None else None,
-                            it_s=rate_tracker.it_per_sec,
                         )
                         if val_logs:
                             logs.update(val_logs)
